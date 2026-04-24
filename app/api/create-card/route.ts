@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { username, lotteryNumber, password, force } = body
+  const { username, lotteryNumber, password, force, gameId } = body
 
   if (!password || password !== process.env.ADMIN_PASSWORD) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -38,7 +38,12 @@ export async function POST(req: NextRequest) {
 
   const { error } = await supabase
     .from('lottery_cards')
-    .insert({ token, username: username.trim(), lottery_number: lotteryNumber.trim() })
+    .insert({
+      token,
+      username: username.trim(),
+      lottery_number: lotteryNumber.trim(),
+      game_id: gameId ?? null,
+    })
 
   if (error) {
     console.error(error)

@@ -11,7 +11,20 @@ export async function GET(req: NextRequest) {
   const supabase = getSupabase()
   const { data, error } = await supabase
     .from('lottery_cards')
-    .select('username, lottery_number, token, is_scratched, created_at')
+    .select(`
+      username,
+      lottery_number,
+      token,
+      is_scratched,
+      created_at,
+      lottery_games (
+        id,
+        name,
+        entry_fee,
+        prize_title,
+        prize_amount
+      )
+    `)
     .order('created_at', { ascending: false })
 
   if (error) {
