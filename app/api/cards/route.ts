@@ -22,9 +22,11 @@ export async function GET(req: NextRequest) {
         name,
         entry_fee,
         prize_title,
-        prize_amount
+        prize_amount,
+        reveal_date
       )
     `)
+    .eq('is_archived', false)
     .order('created_at', { ascending: false })
 
   if (error) {

@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await supabase
     .from('lottery_games')
     .select('*')
+    .eq('is_archived', false)
     .order('created_at', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { password, name, entryFee, prizeTitle, prizeAmount } = body
+  const { password, name, entryFee, prizeTitle, prizeAmount, revealDate } = body
 
   if (!password || password !== process.env.ADMIN_PASSWORD) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -42,6 +43,7 @@ export async function POST(req: NextRequest) {
       entry_fee: fee,
       prize_title: prizeTitle.trim(),
       prize_amount: prizeAmount.trim(),
+      reveal_date: revealDate || null,
     })
     .select()
     .single()

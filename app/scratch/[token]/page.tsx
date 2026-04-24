@@ -10,9 +10,7 @@ interface Game {
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 0,
+    style: 'currency', currency: 'INR', minimumFractionDigits: 0,
   }).format(amount)
 }
 
@@ -23,6 +21,21 @@ function NotFound() {
         <p className="text-6xl">🎫</p>
         <h1 className="text-2xl font-bold text-white">Card Not Found</h1>
         <p className="text-gray-500 text-sm">This scratch card link is invalid or does not exist.</p>
+      </div>
+    </div>
+  )
+}
+
+function LotteryEnded({ username }: { username: string }) {
+  return (
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6">
+      <div className="text-center space-y-4 max-w-sm">
+        <p className="text-6xl">🏁</p>
+        <h1 className="text-2xl font-bold text-white">Lottery Has Ended</h1>
+        <p className="text-gray-400 text-sm">
+          Hey <span className="text-yellow-400 font-semibold">{username}</span>, this lottery
+          campaign has ended and this card is no longer valid.
+        </p>
       </div>
     </div>
   )
@@ -94,6 +107,7 @@ export default async function ScratchPage({
       username,
       lottery_number,
       is_scratched,
+      is_archived,
       lottery_games (
         name,
         entry_fee,
@@ -118,6 +132,12 @@ export default async function ScratchPage({
       }
     : null
 
+  // Archived + not yet scratched → lottery ended, card voided
+  if (data.is_archived && !data.is_scratched) {
+    return <LotteryEnded username={data.username} />
+  }
+
+  // Already scratched (archived or not) → show result
   if (data.is_scratched) {
     return (
       <AlreadyScratched

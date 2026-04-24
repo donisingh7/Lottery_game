@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import Link from 'next/link'
 
 type Game = {
   id: string
@@ -7,10 +8,12 @@ type Game = {
   entryFee: number
   prizeTitle: string
   prizeAmount: string
+  revealDate: string | null
   createdAt: string
 }
 
 type Card = {
+  token: string
   username: string
   lotteryNumber: string
   link: string
@@ -25,58 +28,68 @@ type DuplicateWarning = {
   existingDate: string
 }
 
+type ArchiveConfirm =
+  | { type: 'game'; id: string; name: string; cardCount: number }
+  | { type: 'card'; token: string; username: string }
+
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+
+function formatRevealDate(d: string) {
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric',
   })
 }
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 0,
+    style: 'currency', currency: 'INR', minimumFractionDigits: 0,
   }).format(amount)
 }
 
 export default function AdminPage() {
-  // Auth
+  // ── Auth ──────────────────────────────────────────────
   const [password, setPassword] = useState('')
   const [authed, setAuthed] = useState(false)
   const [authError, setAuthError] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
 
-  // Games
+  // ── Games ─────────────────────────────────────────────
   const [games, setGames] = useState<Game[]>([])
   const [showGameForm, setShowGameForm] = useState(false)
   const [gameName, setGameName] = useState('')
   const [entryFee, setEntryFee] = useState('')
-  const [prizeTitle, setPrizeTitle] = useState('')
+  const [prizeTitle, setPrizeTitle] = useState('For Winner')
   const [prizeAmount, setPrizeAmount] = useState('')
+  const [revealDate, setRevealDate] = useState('')
   const [gameFormError, setGameFormError] = useState('')
   const [creatingGame, setCreatingGame] = useState(false)
 
-  // Cards
+  // ── Cards ─────────────────────────────────────────────
   const [cards, setCards] = useState<Card[]>([])
   const [selectedGameId, setSelectedGameId] = useState('')
   const [username, setUsername] = useState('')
   const [lotteryNumber, setLotteryNumber] = useState('')
   const [creating, setCreating] = useState(false)
   const [formError, setFormError] = useState('')
-  const [duplicateWarning, setDuplicateWarning] = useState<DuplicateWarning | null>(null)
-  const [copied, setCopied] = useState<number | null>(null)
   const [filterGameId, setFilterGameId] = useState<string>('all')
+  const [copied, setCopied] = useState<number | null>(null)
 
-  // ── Login ───────────────────────────────────────────────────────
+  // ── Warnings / Confirmations ──────────────────────────
+  const [duplicateWarning, setDuplicateWarning] = useState<DuplicateWarning | null>(null)
+  const [archiveConfirm, setArchiveConfirm] = useState<ArchiveConfirm | null>(null)
+  const [archiving, setArchiving] = useState(false)
+  const [archiveError, setArchiveError] = useState('')
+
+  // ── Login ─────────────────────────────────────────────
   const handleLogin = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!password.trim()) { setAuthError('Please enter the password'); return }
-    setAuthLoading(true)
-    setAuthError('')
+    setAuthLoading(true); setAuthError('')
 
     try {
       const enc = encodeURIComponent(password)
@@ -84,38 +97,38 @@ export default function AdminPage() {
         fetch(`/api/cards?password=${enc}`),
         fetch(`/api/games?password=${enc}`),
       ])
-
       if (cardsRes.status === 401) {
         setAuthError('Wrong password. Please try again.')
         return
       }
-
-      const [cardsData, gamesData] = await Promise.all([
-        cardsRes.json(),
-        gamesRes.json(),
-      ])
+      const [cardsData, gamesData] = await Promise.all([cardsRes.json(), gamesRes.json()])
 
       const loadedGames: Game[] = (gamesData.games ?? []).map((g: {
-        id: string; name: string; entry_fee: number
-        prize_title: string; prize_amount: string; created_at: string
+        id: string; name: string; entry_fee: number; prize_title: string
+        prize_amount: string; reveal_date: string | null; created_at: string
       }) => ({
         id: g.id, name: g.name, entryFee: g.entry_fee,
-        prizeTitle: g.prize_title, prizeAmount: g.prize_amount, createdAt: g.created_at,
+        prizeTitle: g.prize_title, prizeAmount: g.prize_amount,
+        revealDate: g.reveal_date, createdAt: g.created_at,
       }))
 
       const loadedCards: Card[] = (cardsData.cards ?? []).map((c: {
-        username: string; lottery_number: string; token: string
+        token: string; username: string; lottery_number: string
         is_scratched: boolean; created_at: string
-        lottery_games: { id: string; name: string; entry_fee: number; prize_title: string; prize_amount: string } | null
+        lottery_games: { id: string; name: string; entry_fee: number; prize_title: string; prize_amount: string; reveal_date: string | null } | null
       }) => ({
+        token: c.token,
         username: c.username,
         lotteryNumber: c.lottery_number,
         link: `${window.location.origin}/scratch/${c.token}`,
         isScratched: c.is_scratched,
         createdAt: c.created_at,
-        game: c.lottery_games
-          ? { id: c.lottery_games.id, name: c.lottery_games.name, entryFee: c.lottery_games.entry_fee, prizeTitle: c.lottery_games.prize_title, prizeAmount: c.lottery_games.prize_amount, createdAt: '' }
-          : null,
+        game: c.lottery_games ? {
+          id: c.lottery_games.id, name: c.lottery_games.name,
+          entryFee: c.lottery_games.entry_fee, prizeTitle: c.lottery_games.prize_title,
+          prizeAmount: c.lottery_games.prize_amount, revealDate: c.lottery_games.reveal_date,
+          createdAt: '',
+        } : null,
       }))
 
       setGames(loadedGames)
@@ -129,33 +142,29 @@ export default function AdminPage() {
     }
   }
 
-  // ── Create Game ─────────────────────────────────────────────────
+  // ── Create Game ───────────────────────────────────────
   const handleCreateGame = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault()
-    setGameFormError('')
-    setCreatingGame(true)
+    setGameFormError(''); setCreatingGame(true)
 
     try {
       const res = await fetch('/api/games', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password, name: gameName, entryFee, prizeTitle, prizeAmount }),
+        body: JSON.stringify({ password, name: gameName, entryFee, prizeTitle, prizeAmount, revealDate }),
       })
       const data = await res.json()
-
-      if (!res.ok) {
-        setGameFormError(data.error || 'Failed to create game')
-        return
-      }
+      if (!res.ok) { setGameFormError(data.error || 'Failed to create game'); return }
 
       const g = data.game
       const newGame: Game = {
         id: g.id, name: g.name, entryFee: g.entry_fee,
-        prizeTitle: g.prize_title, prizeAmount: g.prize_amount, createdAt: g.created_at,
+        prizeTitle: g.prize_title, prizeAmount: g.prize_amount,
+        revealDate: g.reveal_date, createdAt: g.created_at,
       }
       setGames((prev) => [newGame, ...prev])
       if (!selectedGameId) setSelectedGameId(newGame.id)
-      setGameName(''); setEntryFee(''); setPrizeTitle(''); setPrizeAmount('')
+      setGameName(''); setEntryFee(''); setPrizeTitle('For Winner'); setPrizeAmount(''); setRevealDate('')
       setShowGameForm(false)
     } catch {
       setGameFormError('Network error. Please try again.')
@@ -164,10 +173,9 @@ export default function AdminPage() {
     }
   }
 
-  // ── Create Card ─────────────────────────────────────────────────
+  // ── Create Card ───────────────────────────────────────
   const createCard = async (force = false) => {
-    setFormError('')
-    setCreating(true)
+    setFormError(''); setCreating(true)
 
     try {
       const res = await fetch('/api/create-card', {
@@ -190,11 +198,10 @@ export default function AdminPage() {
       const game = games.find((g) => g.id === selectedGameId) ?? null
       const link = `${window.location.origin}/scratch/${data.token}`
       setCards((prev) => [{
-        username, lotteryNumber, link, isScratched: false,
-        createdAt: new Date().toISOString(), game,
+        token: data.token, username, lotteryNumber, link,
+        isScratched: false, createdAt: new Date().toISOString(), game,
       }, ...prev])
-      setUsername('')
-      setLotteryNumber('')
+      setUsername(''); setLotteryNumber('')
     } catch {
       setFormError('Network error. Please try again.')
     } finally {
@@ -202,23 +209,55 @@ export default function AdminPage() {
     }
   }
 
-  const handleCreate = async (e: React.SyntheticEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    await createCard(false)
-  }
+  const handleCreate = (e: React.SyntheticEvent<HTMLFormElement>) => { e.preventDefault(); createCard(false) }
+  const handleForceCreate = () => { setDuplicateWarning(null); createCard(true) }
 
-  const handleForceCreate = async () => {
-    setDuplicateWarning(null)
-    await createCard(true)
+  // ── Archive ───────────────────────────────────────────
+  const handleArchive = async () => {
+    if (!archiveConfirm) return
+    setArchiving(true); setArchiveError('')
+
+    try {
+      if (archiveConfirm.type === 'game') {
+        const res = await fetch(`/api/archive-game/${archiveConfirm.id}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password }),
+        })
+        if (!res.ok) { setArchiveError('Failed to archive. Try again.'); return }
+
+        const archivedId = archiveConfirm.id
+        setGames((prev) => prev.filter((g) => g.id !== archivedId))
+        setCards((prev) => prev.filter((c) => c.game?.id !== archivedId))
+        setSelectedGameId((prev) => {
+          if (prev !== archivedId) return prev
+          return games.filter((g) => g.id !== archivedId)[0]?.id ?? ''
+        })
+      } else {
+        const res = await fetch(`/api/archive-card/${archiveConfirm.token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password }),
+        })
+        if (!res.ok) { setArchiveError('Failed to archive. Try again.'); return }
+
+        const archivedToken = archiveConfirm.token
+        setCards((prev) => prev.filter((c) => c.token !== archivedToken))
+      }
+      setArchiveConfirm(null)
+    } catch {
+      setArchiveError('Network error. Try again.')
+    } finally {
+      setArchiving(false)
+    }
   }
 
   const copyLink = (link: string, idx: number) => {
-    navigator.clipboard.writeText(link)
-    setCopied(idx)
+    navigator.clipboard.writeText(link); setCopied(idx)
     setTimeout(() => setCopied(null), 2000)
   }
 
-  // ── Login Screen ────────────────────────────────────────────────
+  // ── Login Screen ──────────────────────────────────────
   if (!authed) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6">
@@ -231,18 +270,13 @@ export default function AdminPage() {
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Admin password"
-                autoFocus
+                type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                placeholder="Admin password" autoFocus
                 className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-yellow-500 transition-colors"
               />
               {authError && <p className="text-red-400 text-sm mt-2">{authError}</p>}
             </div>
-            <button
-              type="submit"
-              disabled={authLoading}
+            <button type="submit" disabled={authLoading}
               className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 rounded-xl transition-colors disabled:opacity-50"
             >
               {authLoading ? 'Loading...' : 'Login'}
@@ -253,7 +287,7 @@ export default function AdminPage() {
     )
   }
 
-  // ── Admin Dashboard ─────────────────────────────────────────────
+  // ── Dashboard ─────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-950 p-6">
       <div className="max-w-2xl mx-auto space-y-6">
@@ -264,12 +298,18 @@ export default function AdminPage() {
             <h1 className="text-2xl font-black text-white">🃏 Lottery Admin</h1>
             <p className="text-gray-500 text-sm">Manage games and scratch cards</p>
           </div>
-          <button
-            onClick={() => { setAuthed(false); setPassword(''); setCards([]); setGames([]) }}
-            className="text-gray-600 hover:text-gray-400 text-sm transition-colors"
-          >
-            Logout
-          </button>
+          <div className="flex items-center gap-4">
+            <Link href="/admin/archive"
+              className="text-gray-500 hover:text-gray-300 text-sm transition-colors flex items-center gap-1"
+            >
+              📦 Archive
+            </Link>
+            <button onClick={() => { setAuthed(false); setPassword(''); setCards([]); setGames([]) }}
+              className="text-gray-600 hover:text-gray-400 text-sm transition-colors"
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
         {/* ── Section 1: Lottery Games ── */}
@@ -277,10 +317,9 @@ export default function AdminPage() {
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
             <div>
               <h2 className="text-white font-semibold">Lottery Games</h2>
-              <p className="text-gray-600 text-xs mt-0.5">{games.length} game{games.length !== 1 ? 's' : ''} created</p>
+              <p className="text-gray-600 text-xs mt-0.5">{games.length} active</p>
             </div>
-            <button
-              onClick={() => setShowGameForm((v) => !v)}
+            <button onClick={() => setShowGameForm((v) => !v)}
               className="bg-yellow-500 hover:bg-yellow-400 text-black text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
             >
               {showGameForm ? '✕ Cancel' : '+ New Game'}
@@ -292,48 +331,39 @@ export default function AdminPage() {
             <form onSubmit={handleCreateGame} className="px-6 py-4 border-b border-gray-800 space-y-3 bg-gray-950/50">
               <p className="text-gray-400 text-xs font-medium uppercase tracking-wider">Create New Lottery Game</p>
               <input
-                type="text"
-                value={gameName}
-                onChange={(e) => setGameName(e.target.value)}
-                placeholder="Game name (e.g. Weekly Grand Draw)"
-                required
+                type="text" value={gameName} onChange={(e) => setGameName(e.target.value)}
+                placeholder="Game name (e.g. Weekly Grand Draw)" required
                 className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white placeholder-gray-600 text-sm focus:outline-none focus:border-yellow-500 transition-colors"
               />
               <div className="grid grid-cols-2 gap-3">
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">₹</span>
                   <input
-                    type="number"
-                    value={entryFee}
-                    onChange={(e) => setEntryFee(e.target.value)}
-                    placeholder="Entry fee"
-                    min="0"
-                    step="0.01"
-                    required
+                    type="number" value={entryFee} onChange={(e) => setEntryFee(e.target.value)}
+                    placeholder="Entry fee" min="0" step="0.01" required
                     className="w-full bg-gray-800 border border-gray-700 rounded-xl pl-7 pr-4 py-2.5 text-white placeholder-gray-600 text-sm focus:outline-none focus:border-yellow-500 transition-colors"
                   />
                 </div>
                 <input
-                  type="text"
-                  value={prizeTitle}
-                  onChange={(e) => setPrizeTitle(e.target.value)}
-                  placeholder="Prize label (e.g. Cash Prize)"
-                  required
+                  type="text" value={prizeTitle} onChange={(e) => setPrizeTitle(e.target.value)}
+                  placeholder="Prize label" required
                   className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white placeholder-gray-600 text-sm focus:outline-none focus:border-yellow-500 transition-colors"
                 />
               </div>
               <input
-                type="text"
-                value={prizeAmount}
-                onChange={(e) => setPrizeAmount(e.target.value)}
-                placeholder="Prize details (e.g. ₹50,000 Cash or iPhone 16 Pro)"
-                required
+                type="text" value={prizeAmount} onChange={(e) => setPrizeAmount(e.target.value)}
+                placeholder="Prize details (e.g. ₹50,000 Cash or iPhone 16 Pro)" required
                 className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white placeholder-gray-600 text-sm focus:outline-none focus:border-yellow-500 transition-colors"
               />
+              <div>
+                <label className="text-gray-500 text-xs mb-1.5 block">Lottery Result Reveal Date</label>
+                <input
+                  type="date" value={revealDate} onChange={(e) => setRevealDate(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-yellow-500 transition-colors"
+                />
+              </div>
               {gameFormError && <p className="text-red-400 text-xs">{gameFormError}</p>}
-              <button
-                type="submit"
-                disabled={creatingGame}
+              <button type="submit" disabled={creatingGame}
                 className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-2.5 rounded-xl transition-colors disabled:opacity-50 text-sm"
               >
                 {creatingGame ? 'Creating...' : '✨ Create Lottery Game'}
@@ -345,7 +375,7 @@ export default function AdminPage() {
           {games.length === 0 ? (
             <div className="px-6 py-8 text-center text-gray-700">
               <p className="text-2xl mb-2">🎲</p>
-              <p className="text-sm">No games yet. Create your first lottery game above.</p>
+              <p className="text-sm">No active games. Create your first lottery game above.</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-800">
@@ -354,14 +384,25 @@ export default function AdminPage() {
                   <div className="min-w-0">
                     <p className="text-white font-medium text-sm truncate">{game.name}</p>
                     <p className="text-gray-500 text-xs mt-0.5">
-                      {game.prizeTitle}:{' '}
-                      <span className="text-yellow-400">{game.prizeAmount}</span>
+                      {game.prizeTitle}: <span className="text-yellow-400">{game.prizeAmount}</span>
                     </p>
+                    {game.revealDate && (
+                      <p className="text-purple-400 text-xs mt-0.5">
+                        🗓 Result: {formatRevealDate(game.revealDate)}
+                      </p>
+                    )}
                   </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-green-400 text-xs font-semibold">
-                      Entry {formatCurrency(game.entryFee)}
-                    </p>
+                  <div className="shrink-0 flex items-center gap-3">
+                    <p className="text-green-400 text-xs font-semibold">{formatCurrency(game.entryFee)}</p>
+                    <button
+                      onClick={() => setArchiveConfirm({
+                        type: 'game', id: game.id, name: game.name,
+                        cardCount: cards.filter((c) => c.game?.id === game.id).length,
+                      })}
+                      className="text-orange-500 hover:text-orange-400 text-xs px-2 py-1 rounded-lg border border-orange-900 hover:border-orange-700 transition-colors"
+                    >
+                      Archive
+                    </button>
                   </div>
                 </div>
               ))}
@@ -369,7 +410,7 @@ export default function AdminPage() {
           )}
         </div>
 
-        {/* ── Section 2: Create Scratch Card ── */}
+        {/* ── Section 2: Create Card ── */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">
           <h2 className="text-white font-semibold">Create Scratch Card</h2>
 
@@ -379,60 +420,49 @@ export default function AdminPage() {
             </div>
           ) : (
             <form onSubmit={handleCreate} className="space-y-3">
-              {/* Game selector */}
               <div>
-                <label className="text-gray-500 text-xs uppercase tracking-wider mb-1.5 block">
-                  Select Lottery Game
-                </label>
+                <label className="text-gray-500 text-xs uppercase tracking-wider mb-1.5 block">Select Lottery Game</label>
                 <select
-                  value={selectedGameId}
-                  onChange={(e) => setSelectedGameId(e.target.value)}
-                  required
+                  value={selectedGameId} onChange={(e) => setSelectedGameId(e.target.value)} required
                   className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-yellow-500 transition-colors appearance-none"
                 >
                   {games.map((g) => (
                     <option key={g.id} value={g.id}>
-                      {g.name} — Entry {formatCurrency(g.entryFee)} — {g.prizeTitle}: {g.prizeAmount}
+                      {g.name} — {formatCurrency(g.entryFee)} — {g.prizeTitle}: {g.prizeAmount}
                     </option>
                   ))}
                 </select>
-
-                {/* Selected game preview */}
                 {selectedGameId && (() => {
                   const g = games.find((x) => x.id === selectedGameId)
                   return g ? (
-                    <div className="mt-2 flex gap-3 text-xs">
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
                       <span className="text-green-400 bg-green-900/20 border border-green-900 px-2 py-1 rounded-lg">
                         Entry: {formatCurrency(g.entryFee)}
                       </span>
                       <span className="text-yellow-400 bg-yellow-900/20 border border-yellow-900 px-2 py-1 rounded-lg">
                         {g.prizeTitle}: {g.prizeAmount}
                       </span>
+                      {g.revealDate && (
+                        <span className="text-purple-400 bg-purple-900/20 border border-purple-900 px-2 py-1 rounded-lg">
+                          🗓 {formatRevealDate(g.revealDate)}
+                        </span>
+                      )}
                     </div>
                   ) : null
                 })()}
               </div>
-
               <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="User name (e.g. John Doe)"
-                required
+                type="text" value={username} onChange={(e) => setUsername(e.target.value)}
+                placeholder="User name (e.g. John Doe)" required
                 className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-yellow-500 transition-colors"
               />
               <input
-                type="text"
-                value={lotteryNumber}
-                onChange={(e) => setLotteryNumber(e.target.value)}
-                placeholder="Lottery number (e.g. 4728)"
-                required
+                type="text" value={lotteryNumber} onChange={(e) => setLotteryNumber(e.target.value)}
+                placeholder="Lottery number (e.g. 4728)" required
                 className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-yellow-500 transition-colors"
               />
               {formError && <p className="text-red-400 text-sm">{formError}</p>}
-              <button
-                type="submit"
-                disabled={creating}
+              <button type="submit" disabled={creating}
                 className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {creating ? 'Generating...' : '✨ Generate Scratch Card Link'}
@@ -450,24 +480,15 @@ export default function AdminPage() {
                 <p className="text-amber-300 font-semibold">Username already exists</p>
                 <p className="text-amber-400/80 text-sm mt-1">
                   <span className="font-medium text-amber-300">{duplicateWarning.username}</span> already
-                  has a card from{' '}
-                  <span className="font-medium text-amber-300">
-                    {formatDate(duplicateWarning.existingDate)}
-                  </span>
-                  . Create another one anyway?
+                  has a card from <span className="font-medium text-amber-300">{formatDate(duplicateWarning.existingDate)}</span>. Create another one anyway?
                 </p>
               </div>
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={() => setDuplicateWarning(null)}
+              <button onClick={() => setDuplicateWarning(null)}
                 className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-medium py-2 rounded-xl transition-colors text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleForceCreate}
-                disabled={creating}
+              >Cancel</button>
+              <button onClick={handleForceCreate} disabled={creating}
                 className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-medium py-2 rounded-xl transition-colors text-sm disabled:opacity-50"
               >
                 {creating ? 'Creating...' : 'Yes, Create Anyway'}
@@ -476,23 +497,54 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ── Section 3: All Cards ── */}
+        {/* ── Archive Confirm ── */}
+        {archiveConfirm && (
+          <div className="bg-orange-950/40 border border-orange-700 rounded-2xl p-5 space-y-4">
+            <div className="flex gap-3">
+              <span className="text-2xl">📦</span>
+              <div>
+                <p className="text-orange-300 font-semibold">Confirm Archive</p>
+                {archiveConfirm.type === 'game' ? (
+                  <p className="text-orange-400/80 text-sm mt-1">
+                    Archive <span className="font-medium text-orange-300">&ldquo;{archiveConfirm.name}&rdquo;</span>?{' '}
+                    This will also archive all{' '}
+                    <span className="font-medium text-orange-300">{archiveConfirm.cardCount} scratch cards</span>{' '}
+                    in this campaign. Users with unscratched cards will see &ldquo;Lottery Ended&rdquo;.
+                  </p>
+                ) : (
+                  <p className="text-orange-400/80 text-sm mt-1">
+                    Archive <span className="font-medium text-orange-300">{archiveConfirm.username}&apos;s</span>{' '}
+                    scratch card? It will be moved to the archive and removed from this view.
+                  </p>
+                )}
+                {archiveError && <p className="text-red-400 text-xs mt-2">{archiveError}</p>}
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => { setArchiveConfirm(null); setArchiveError('') }}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-medium py-2 rounded-xl transition-colors text-sm"
+              >Cancel</button>
+              <button onClick={handleArchive} disabled={archiving}
+                className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-medium py-2 rounded-xl transition-colors text-sm disabled:opacity-50"
+              >
+                {archiving ? 'Archiving...' : '📦 Archive'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Section 3: Card History ── */}
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-white font-semibold shrink-0">Card History</h2>
             <select
-              value={filterGameId}
-              onChange={(e) => setFilterGameId(e.target.value)}
+              value={filterGameId} onChange={(e) => setFilterGameId(e.target.value)}
               className="flex-1 bg-gray-900 border border-gray-800 rounded-xl px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-yellow-500 transition-colors appearance-none"
             >
               <option value="all">All Campaigns ({cards.length})</option>
               {games.map((g) => {
                 const count = cards.filter((c) => c.game?.id === g.id).length
-                return (
-                  <option key={g.id} value={g.id}>
-                    {g.name} ({count})
-                  </option>
-                )
+                return <option key={g.id} value={g.id}>{g.name} ({count})</option>
               })}
               {cards.some((c) => !c.game) && (
                 <option value="none">No Campaign ({cards.filter((c) => !c.game).length})</option>
@@ -502,22 +554,19 @@ export default function AdminPage() {
 
           {(() => {
             const filtered =
-              filterGameId === 'all'
-                ? cards
-                : filterGameId === 'none'
-                ? cards.filter((c) => !c.game)
-                : cards.filter((c) => c.game?.id === filterGameId)
+              filterGameId === 'all' ? cards
+              : filterGameId === 'none' ? cards.filter((c) => !c.game)
+              : cards.filter((c) => c.game?.id === filterGameId)
 
             const selectedGame = games.find((g) => g.id === filterGameId)
 
             return filtered.length === 0 ? (
               <div className="text-center py-10 text-gray-700">
                 <p className="text-4xl mb-3">🎫</p>
-                <p>
-                  {cards.length === 0
-                    ? 'No cards yet. Generate your first one above.'
-                    : `No cards found for "${selectedGame?.name ?? 'this campaign'}".`}
-                </p>
+                <p>{cards.length === 0
+                  ? 'No cards yet. Generate your first one above.'
+                  : `No cards found for "${selectedGame?.name ?? 'this campaign'}".`
+                }</p>
               </div>
             ) : (
               <>
@@ -527,74 +576,72 @@ export default function AdminPage() {
                       <p className="text-purple-300 font-medium text-sm">{selectedGame.name}</p>
                       <p className="text-gray-500 text-xs">
                         Entry {formatCurrency(selectedGame.entryFee)} · {selectedGame.prizeTitle}: {selectedGame.prizeAmount}
+                        {selectedGame.revealDate && ` · 🗓 ${formatRevealDate(selectedGame.revealDate)}`}
                       </p>
                     </div>
                     <span className="text-purple-400 text-sm font-semibold">{filtered.length} cards</span>
                   </div>
                 )}
                 {filtered.map((card, i) => (
-              <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-white font-medium">{card.username}</p>
-                    <p className="text-gray-500 text-sm">
-                      Number:{' '}
-                      <span className="text-yellow-400 font-semibold">{card.lotteryNumber}</span>
-                    </p>
-                    {card.game && (
-                      <div className="flex flex-wrap gap-1.5 mt-1.5">
-                        <span className="text-purple-300 bg-purple-900/20 border border-purple-900 text-xs px-2 py-0.5 rounded-full">
-                          {card.game.name}
-                        </span>
-                        <span className="text-green-400 bg-green-900/20 border border-green-900 text-xs px-2 py-0.5 rounded-full">
-                          Entry {formatCurrency(card.game.entryFee)}
-                        </span>
-                        <span className="text-yellow-400 bg-yellow-900/20 border border-yellow-900 text-xs px-2 py-0.5 rounded-full">
-                          {card.game.prizeTitle}: {card.game.prizeAmount}
-                        </span>
+                  <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-white font-medium">{card.username}</p>
+                        <p className="text-gray-500 text-sm">
+                          Number: <span className="text-yellow-400 font-semibold">{card.lotteryNumber}</span>
+                        </p>
+                        {card.game && (
+                          <div className="flex flex-wrap gap-1.5 mt-1.5">
+                            <span className="text-purple-300 bg-purple-900/20 border border-purple-900 text-xs px-2 py-0.5 rounded-full">
+                              {card.game.name}
+                            </span>
+                            <span className="text-green-400 bg-green-900/20 border border-green-900 text-xs px-2 py-0.5 rounded-full">
+                              {formatCurrency(card.game.entryFee)}
+                            </span>
+                            <span className="text-yellow-400 bg-yellow-900/20 border border-yellow-900 text-xs px-2 py-0.5 rounded-full">
+                              {card.game.prizeTitle}: {card.game.prizeAmount}
+                            </span>
+                          </div>
+                        )}
+                        <p className="text-gray-700 text-xs mt-1">{formatDate(card.createdAt)}</p>
                       </div>
-                    )}
-                    <p className="text-gray-700 text-xs mt-1">{formatDate(card.createdAt)}</p>
+                      <div className="shrink-0 flex flex-col items-end gap-2">
+                        {card.isScratched ? (
+                          <span className="bg-gray-800 text-gray-400 text-xs px-2 py-1 rounded-full border border-gray-700">Scratched</span>
+                        ) : (
+                          <span className="bg-green-900/30 text-green-400 text-xs px-2 py-1 rounded-full border border-green-800">Pending</span>
+                        )}
+                        <button
+                          onClick={() => setArchiveConfirm({ type: 'card', token: card.token, username: card.username })}
+                          className="text-orange-600 hover:text-orange-400 text-xs transition-colors"
+                        >
+                          Archive
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <input readOnly value={card.link}
+                        onClick={(e) => (e.target as HTMLInputElement).select()}
+                        className="flex-1 bg-gray-800 rounded-lg px-3 py-2 text-gray-400 text-xs font-mono min-w-0"
+                      />
+                      <button onClick={() => copyLink(card.link, i)}
+                        className="bg-gray-800 hover:bg-gray-700 text-white text-xs px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
+                      >
+                        {copied === i ? '✓ Copied' : 'Copy'}
+                      </button>
+                      <a
+                        href={`https://wa.me/?text=${encodeURIComponent(`Hey ${card.username}! 🎰 You have a lucky scratch card for the ${card.game?.name ?? 'lottery'}. Open and scratch to reveal your number: ${card.link}`)}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="bg-green-700 hover:bg-green-600 text-white text-xs px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
+                      >
+                        WhatsApp
+                      </a>
+                    </div>
                   </div>
-                  {card.isScratched ? (
-                    <span className="shrink-0 bg-gray-800 text-gray-400 text-xs px-2 py-1 rounded-full border border-gray-700">
-                      Scratched
-                    </span>
-                  ) : (
-                    <span className="shrink-0 bg-green-900/30 text-green-400 text-xs px-2 py-1 rounded-full border border-green-800">
-                      Pending
-                    </span>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    readOnly
-                    value={card.link}
-                    onClick={(e) => (e.target as HTMLInputElement).select()}
-                    className="flex-1 bg-gray-800 rounded-lg px-3 py-2 text-gray-400 text-xs font-mono min-w-0"
-                  />
-                  <button
-                    onClick={() => copyLink(card.link, i)}
-                    className="bg-gray-800 hover:bg-gray-700 text-white text-xs px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
-                  >
-                    {copied === i ? '✓ Copied' : 'Copy'}
-                  </button>
-                  <a
-                    href={`https://wa.me/?text=${encodeURIComponent(
-                      `Hey ${card.username}! 🎰 You have a lucky scratch card for the ${card.game?.name ?? 'lottery'}. Open and scratch to reveal your number: ${card.link}`
-                    )}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-green-700 hover:bg-green-600 text-white text-xs px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
-                  >
-                    WhatsApp
-                  </a>
-                </div>
-              </div>
-            ))}
-          </>
-        )
-      })()}
+                ))}
+              </>
+            )
+          })()}
         </div>
 
       </div>
