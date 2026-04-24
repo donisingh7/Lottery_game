@@ -4,6 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Lottery Scratch Card",
   description: "Scratch your lucky card",
+  icons: {
+    icon: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({
