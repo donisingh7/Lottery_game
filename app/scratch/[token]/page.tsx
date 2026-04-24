@@ -45,21 +45,26 @@ function AlreadyScratched({
   username,
   lotteryNumber,
   game,
+  isArchived,
 }: {
   username: string
   lotteryNumber: string
   game: Game | null
+  isArchived: boolean
 }) {
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6">
       <div className="text-center space-y-6 max-w-sm w-full">
         <div className="space-y-2">
-          <p className="text-5xl">🔒</p>
+          <p className="text-5xl">{isArchived ? '🏁' : '🔒'}</p>
           <h1 className="text-2xl font-bold text-white">Already Scratched</h1>
           <p className="text-gray-400 text-sm">
             Hey <span className="text-yellow-400 font-semibold">{username}</span>, this card has
             already been used.
           </p>
+          {isArchived && (
+            <p className="text-red-400 text-sm font-medium">This lottery campaign has ended.</p>
+          )}
         </div>
 
         {game && (
@@ -144,6 +149,7 @@ export default async function ScratchPage({
         username={data.username}
         lotteryNumber={data.lottery_number}
         game={game}
+        isArchived={data.is_archived}
       />
     )
   }

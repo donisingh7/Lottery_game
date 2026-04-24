@@ -289,6 +289,7 @@ export default function AdminPage() {
 
   // ── Dashboard ─────────────────────────────────────────
   return (
+    <>
     <div className="min-h-screen bg-gray-950 p-6">
       <div className="max-w-2xl mx-auto space-y-6">
 
@@ -497,41 +498,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ── Archive Confirm ── */}
-        {archiveConfirm && (
-          <div className="bg-orange-950/40 border border-orange-700 rounded-2xl p-5 space-y-4">
-            <div className="flex gap-3">
-              <span className="text-2xl">📦</span>
-              <div>
-                <p className="text-orange-300 font-semibold">Confirm Archive</p>
-                {archiveConfirm.type === 'game' ? (
-                  <p className="text-orange-400/80 text-sm mt-1">
-                    Archive <span className="font-medium text-orange-300">&ldquo;{archiveConfirm.name}&rdquo;</span>?{' '}
-                    This will also archive all{' '}
-                    <span className="font-medium text-orange-300">{archiveConfirm.cardCount} scratch cards</span>{' '}
-                    in this campaign. Users with unscratched cards will see &ldquo;Lottery Ended&rdquo;.
-                  </p>
-                ) : (
-                  <p className="text-orange-400/80 text-sm mt-1">
-                    Archive <span className="font-medium text-orange-300">{archiveConfirm.username}&apos;s</span>{' '}
-                    scratch card? It will be moved to the archive and removed from this view.
-                  </p>
-                )}
-                {archiveError && <p className="text-red-400 text-xs mt-2">{archiveError}</p>}
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => { setArchiveConfirm(null); setArchiveError('') }}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-medium py-2 rounded-xl transition-colors text-sm"
-              >Cancel</button>
-              <button onClick={handleArchive} disabled={archiving}
-                className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-medium py-2 rounded-xl transition-colors text-sm disabled:opacity-50"
-              >
-                {archiving ? 'Archiving...' : '📦 Archive'}
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* ── Section 3: Card History ── */}
         <div className="space-y-3">
@@ -646,5 +612,69 @@ export default function AdminPage() {
 
       </div>
     </div>
+
+    {/* ── Archive Modal ── */}
+    {archiveConfirm && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-6"
+        onClick={() => { if (!archiving) { setArchiveConfirm(null); setArchiveError('') } }}
+      >
+        {/* Backdrop */}
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+
+        {/* Card */}
+        <div
+          className="relative w-full max-w-sm bg-gray-900 border border-orange-700 rounded-2xl p-6 space-y-5 shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex gap-4">
+            <span className="text-3xl">📦</span>
+            <div className="space-y-1">
+              <p className="text-orange-300 font-semibold text-lg">Confirm Archive</p>
+              {(() => {
+                const confirm = archiveConfirm
+                if (confirm.type === 'game') {
+                  return (
+                    <p className="text-orange-400/80 text-sm leading-relaxed">
+                      Archive <span className="font-medium text-orange-300">&ldquo;{confirm.name}&rdquo;</span>?{' '}
+                      This will also archive{' '}
+                      <span className="font-medium text-orange-300">{confirm.cardCount} scratch card{confirm.cardCount !== 1 ? 's' : ''}</span>{' '}
+                      in this campaign. Users with unscratched cards will see &ldquo;Lottery Ended&rdquo;.
+                    </p>
+                  )
+                }
+                return (
+                  <p className="text-orange-400/80 text-sm leading-relaxed">
+                    Archive <span className="font-medium text-orange-300">{confirm.username}&apos;s</span>{' '}
+                    scratch card? It will be moved to the archive and removed from this view.
+                  </p>
+                )
+              })()}
+              {archiveError && (
+                <p className="text-red-400 text-xs pt-1">{archiveError}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => { setArchiveConfirm(null); setArchiveError('') }}
+              disabled={archiving}
+              className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-medium py-2.5 rounded-xl transition-colors text-sm disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleArchive}
+              disabled={archiving}
+              className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-bold py-2.5 rounded-xl transition-colors text-sm disabled:opacity-50"
+            >
+              {archiving ? 'Archiving...' : '📦 Archive'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
   )
 }
